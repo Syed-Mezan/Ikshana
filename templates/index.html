@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>M-Drone Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      /* Reverted to the original dark grey theme */
+      --bg-color: #121212; 
+      --surface-color: #1e1e1e;
+      --primary-color: #4caf50;
+      --primary-dark: #388e3c;
+      --text-primary: #e0e0e0;
+      --text-secondary: #b0b0b0;
+      --border-color: #333;
+      --danger-color: #e53935;
+      --info-color: #2196f3;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-primary); }
+    #loader { position: fixed; z-index: 9999; background: #000; top: 0; left: 0; height: 100%; width: 100%; display: flex; align-items: center; justify-content: center; }
+    #loader img { width: 150px; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 0.8; } }
+    .sidebar { width: 200px; background: var(--surface-color); height: 100vh; position: fixed; top: 0; left: 0; box-shadow: 2px 0 10px rgba(0,0,0,0.5); padding-top: 20px; border-right: 1px solid var(--border-color); transition: width 0.3s ease; display: flex; flex-direction: column; justify-content: space-between; }
+    .sidebar-header { padding: 0 20px 20px 20px; text-align: center; }
+    .sidebar-header img { width: 100px; }
+    .sidebar ul { list-style: none; padding: 0; margin: 0; }
+    .sidebar ul li { padding: 15px 20px; font-size: 16px; font-weight: 500; cursor: pointer; color: var(--text-secondary); border-left: 3px solid transparent; transition: all 0.3s ease; }
+    .sidebar ul li.active, .sidebar ul li:hover { background: rgba(76, 175, 80, 0.1); color: var(--primary-color); border-left-color: var(--primary-color); }
+    .main-content-wrapper { margin-left: 200px; padding: 20px; transition: margin-left 0.3s ease; }
+    .header { font-size: 2em; margin-bottom: 20px; color: var(--primary-color); font-weight: 700; }
+    .card { background: var(--surface-color); padding: 20px; margin-top: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid var(--border-color); }
+    .video-feed img { width: 100%; max-height: 45vh; object-fit: contain; border-radius: 10px; border: 2px solid var(--primary-color); background-color: #000; }
+    #map { height: 350px; width: 100%; border-radius: 10px; margin-top: 10px; background-color: #333; }
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px; margin-top: 20px; }
+    .info-item { background: #2a2a2a; padding: 15px; border-radius: 8px; text-align: center; }
+    .info-item h4 { margin: 0 0 8px; font-size: 14px; color: var(--text-secondary); font-weight: 500; }
+    .info-item p { margin: 0; font-size: 20px; font-weight: 600; color: var(--text-primary); }
+    .tasks-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .controls-container h3 { margin-top: 0; color: var(--primary-color); font-weight: 600; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+    .control-group { margin-bottom: 20px; }
+    .control-group p { margin: 0 0 10px 0; font-weight: 500; color: var(--text-secondary); }
+    .control-group .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .control-group button { padding: 12px; font-size: 14px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    button.btn-primary { background-color: var(--primary-color); color: #fff; }
+    button.btn-primary:hover { background-color: var(--primary-dark); }
+    button.btn-danger { background-color: #e53935; color: #fff; }
+    button.btn-secondary { background-color: #555; color: var(--text-primary); }
+    .farm-info-group input { display: block; margin-top: 10px; padding: 10px; background: #222; border: 1px solid #444; color: #eee; border-radius: 5px; width: 100%; font-family: 'Inter', sans-serif; font-size: 14px; }
+    .threshold-group { padding: 15px; background-color: #2a2a2a; border-radius: 8px; margin-top: 20px;}
+    .threshold-group label { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; color: var(--text-secondary); }
+    .threshold-group input[type="range"] { width: 100%; margin-top: 5px; }
+    .zoom-toggle { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 14px; margin-top: 15px;}
+    .analytics-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+    .chart-container { width: 100%; max-width: 400px; margin: auto; }
+    #notification-container { position: fixed; bottom: 20px; right: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; }
+    .notification { padding: 15px 20px; border-radius: 8px; color: #fff; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.5); opacity: 0; transform: translateX(120%); animation: slideIn 0.5s forwards, fadeOut 0.5s 4s forwards; background-color: var(--info-color); }
+    @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+    @keyframes fadeOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(120%); } }
+    .btn-download { background-color: transparent; border: 2px solid var(--primary-color); color: var(--primary-color); }
+    .btn-download:hover { background-color: var(--primary-color); color: #fff; }
+    .language-selector { padding: 0 20px 20px 20px; }
+    .language-selector select { width: 100%; padding: 8px; background-color: #2a2a2a; color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 5px; font-family: 'Inter', sans-serif; }
+    
+    @media (max-width: 1100px) {
+        .sidebar { width: 160px; }
+        .main-content-wrapper { margin-left: 160px; padding: 15px; }
+        .tasks-layout, .analytics-layout { grid-template-columns: 1fr; }
+        .header { font-size: 1.5em; }
+        .card { padding: 15px; }
+        .control-group button { padding: 10px; font-size: 13px; }
+    }
+
+    @media (max-width: 768px) {
+        .sidebar { width: 100%; height: auto; position: relative; box-shadow: none; display: flex; justify-content: space-between; align-items: center; padding-top: 0; }
+        .sidebar-header { padding: 5px 10px; }
+        .sidebar-header img { width: 80px; }
+        .sidebar ul { display: flex; justify-content: flex-end; flex-grow: 1; }
+        .sidebar ul li { border-left: none; border-bottom: 3px solid transparent; padding: 10px; font-size: 14px; }
+        .main-content-wrapper { margin-left: 0; padding: 10px; }
+        .header { font-size: 1.2em; margin-bottom: 10px; }
+        .card { padding: 10px; margin-top: 10px; }
+        .info-grid { grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        .info-item { padding: 8px; }
+        .info-item h4 { font-size: 12px; }
+        .info-item p { font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="notification-container"></div>
+<div id="loader"><img src="https://multiplexdrone.com/wp-content/uploads/2025/01/M-DRONE_Final-Logo.png" alt="Loading..." /></div>
+
+<div id="main-content" style="display: none;">
+  <div class="sidebar">
+    <div>
+      <div class="sidebar-header"><img src="https://multiplexdrone.com/wp-content/uploads/2025/01/M-DRONE_Final-Logo.png" alt="M-Drone Logo"/></div>
+      <ul>
+        <li class="active" onclick="showSection('dashboard')" data-i18n="dashboard">📊 Dashboard</li>
+        <li onclick="showSection('tasks')" data-i18n="tasks">📋 Tasks</li>
+        <li onclick="showSection('analytics')" data-i18n="analytics">📈 Analytics</li>
+      </ul>
+    </div>
+    <div class="language-selector">
+      <select id="langSelector">
+        <option value="en">English</option>
+        <option value="kn">Kannada (ಕನ್ನಡ)</option>
+        <option value="te">Telugu (తెలుగు)</option>
+        <option value="ta">Tamil (தமிழ்)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="main-content-wrapper">
+    <div class="header" data-i18n="header">Drone Vision Dashboard</div>
+
+    <div id="dashboard" class="card">
+      <h3 data-i18n="farmLocation">Farm Location - M Drone Office</h3>
+      <div id="map"></div>
+      <div class="info-grid">
+        <div class="info-item"><h4 data-i18n="drones">🛰️ Drones</h4><p>5</p></div>
+        <div class="info-item"><h4 data-i18n="missions">🎯 Missions</h4><p>2</p></div>
+        <div class="info-item"><h4 data-i18n="battery">🔋 Battery</h4><p>78%</p></div>
+        <div class="info-item"><h4 data-i18n="signal">📡 Signal</h4><p>85%</p></div>
+        <div class="info-item"><h4 data-i18n="gps">📍 GPS</h4><p>Locked</p></div>
+        <div class="info-item"><h4 data-i18n="time">🕒 Time</h4><p id="live-clock">--:--</p></div>
+      </div>
+    </div>
+
+    <div id="tasks" class="card" style="display:none;">
+      <div class="tasks-layout">
+        <div class="video-container">
+            <h3 data-i18n="liveFeed">Live Drone Feed</h3>
+            <div class="video-feed"><img src="{{ url_for('video') }}" alt="Live Feed"></div>
+        </div>
+        <div class="controls-container">
+            <div class="control-group">
+                <p data-i18n="detectionMode">Detection Mode</p>
+                <div class="buttons">
+                    <button class="btn-secondary" onclick="setMode('leaf')">🌿 Leaf</button>
+                    <button class="btn-secondary" onclick="setMode('tree')">🌳 Tree</button>
+                </div>
+            </div>
+            <div class="control-group">
+                <p data-i18n="detectionControl">Detection Control</p>
+                <div class="buttons">
+                    <button class="btn-primary" onclick="sendCommand('/start')">▶ Start</button>
+                    <button class="btn-danger" onclick="sendCommand('/stop')">⏹ Stop</button>
+                </div>
+            </div>
+            <div class="control-group">
+                <p data-i18n="recording">Recording</p>
+                <div class="buttons">
+                    <button class="btn-secondary" onclick="sendCommand('/start_recording')">🔴 Rec</button>
+                    <button class="btn-secondary" onclick="sendCommand('/stop_recording')">💾 Save</button>
+                </div>
+            </div>
+            <div class="threshold-group">
+                <h3 data-i18n="advControls">Advanced Controls</h3>
+                <label for="confSlider">
+                    <span data-i18n="confidence">Confidence</span>
+                    <span id="confValue">70%</span>
+                </label>
+                <input type="range" min="10" max="95" value="70" class="slider" id="confSlider">
+                <label for="iouSlider">
+                    <span data-i18n="overlap">Overlap (IoU)</span>
+                    <span id="iouValue">50%</span>
+                </label>
+                <input type="range" min="10" max="95" value="50" class="slider" id="iouSlider">
+                <div class="zoom-toggle">
+                    <input type="checkbox" id="zoomToggle">
+                    <label for="zoomToggle" data-i18n="enableZoom">Enable Auto-Zoom on Detection</label>
+                </div>
+            </div>
+            <div class="farm-info-group">
+                 <h3 data-i18n="farmReportDetails">Farm & Report Details</h3>
+                 <p id="tree-count" style="font-weight:bold; color: #81c784; font-size: 1.1em;">Live Plant Count: 0</p>
+                 <input type="text" id="reportLocation" placeholder="Location" value="Sira, Tumakuru">
+                 <input type="text" id="reportCropType" placeholder="Crop Type">
+                 <input type="number" id="reportFarmArea" placeholder="Farm Area (in acres)">
+                 <input type="text" id="reportOperator" placeholder="Operator Name">
+                 <button class="btn-primary btn-download" style="width:100%; margin-top: 15px;" onclick="triggerPdfDownload()">
+                    <span data-i18n="downloadReport">📄 Download Report</span>
+                 </button>
+            </div>
+        </div>
+      </div>
+    </div>
+    <div id="analytics" class="card" style="display:none;">
+        <h3 data-i18n="diseaseAnalytics">Disease Analytics</h3>
+        <div class="analytics-layout">
+            <div class="chart-container"><canvas id="diseasePieChart"></canvas></div>
+            <div class="chart-container"><canvas id="diseaseBarChart"></canvas></div>
+        </div>
+    </div>
+  </div>
+</div>
+<script>
+  let pieChart, barChart;
+  const confSlider = document.getElementById('confSlider');
+  const iouSlider = document.getElementById('iouSlider');
+  const confValue = document.getElementById('confValue');
+  const iouValue = document.getElementById('iouValue');
+  const zoomToggle = document.getElementById('zoomToggle');
+
+  function updateThresholds() {
+    const confidence = confSlider.value / 100;
+    const iou = iouSlider.value / 100;
+    fetch('/set_thresholds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confidence, iou })
+    }).then(res => res.json()).then(data => console.log(data.status));
+  }
+  
+  confSlider.addEventListener('input', () => {
+    confValue.innerText = `${confSlider.value}%`;
+    updateThresholds();
+  });
+
+  iouSlider.addEventListener('input', () => {
+    iouValue.innerText = `${iouSlider.value}%`;
+    updateThresholds();
+  });
+  
+  zoomToggle.addEventListener('change', () => {
+      const isEnabled = zoomToggle.checked;
+      fetch(`/toggle_zoom?state=${isEnabled}`)
+        .then(res => res.json())
+        .then(data => showNotification(data.status));
+  });
+
+  function setMode(mode) {
+    fetch(`/set_mode/${mode}`)
+      .then(res => res.json())
+      .then(data => {
+        showNotification(data.status);
+        const defaultConfPercent = Math.round(data.default_confidence * 100);
+        confSlider.value = defaultConfPercent;
+        confValue.innerText = `${defaultConfPercent}%`;
+        updateThresholds();
+      });
+  }
+  
+  function showNotification(message) {
+      const container = document.getElementById('notification-container');
+      const notif = document.createElement('div');
+      notif.className = 'notification';
+      notif.innerText = message;
+      container.appendChild(notif);
+      setTimeout(() => { notif.remove(); }, 4500);
+  }
+
+  function sendCommand(endpoint) {
+    fetch(endpoint).then(res => res.text()).then(data => { console.log(data); showNotification(data); });
+  }
+
+  function triggerPdfDownload() {
+    const location = document.getElementById('reportLocation').value;
+    const crop = document.getElementById('reportCropType').value;
+    const area = document.getElementById('reportFarmArea').value;
+    const operator = document.getElementById('reportOperator').value;
+
+    if (!location || !crop || !area) {
+      showNotification('❌ Please fill in required fields.');
+      return;
+    }
+    const query = `?location=${encodeURIComponent(location)}&crop=${encodeURIComponent(crop)}&area=${encodeURIComponent(area)}&operator=${encodeURIComponent(operator)}`;
+    window.location.href = '/download_pdf' + query;
+  }
+  
+  function showSection(id) {
+    ['dashboard', 'tasks', 'analytics'].forEach(s => {
+      document.getElementById(s).style.display = s === id ? 'block' : 'none';
+    });
+    document.querySelectorAll('.sidebar ul li').forEach(el => el.classList.remove('active'));
+    document.querySelector(`.sidebar ul li[onclick="showSection('${id}')"]`).classList.add('active');
+    if (id === 'analytics') {
+        updateAnalyticsCharts();
+    }
+  }
+
+  function initMap() {
+    document.getElementById('map').innerHTML = '<p style="text-align:center; padding-top: 150px;">Google Maps requires an API key.</p>';
+  }
+
+  function updateClock() {
+    const now = new Date();
+    document.getElementById("live-clock").innerText = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  }
+  
+  function initializeCharts() {
+      const commonPalette = ['#e53935', '#fb8c00', '#3949ab', '#43a047', '#fdd835', '#00acc1', '#d81b60', '#5e35b1'];
+      const pieCtx = document.getElementById('diseasePieChart').getContext('2d');
+      pieChart = new Chart(pieCtx, {
+          type: 'pie', data: { labels: [], datasets: [{ data: [], backgroundColor: commonPalette, borderColor: '#1e1e1e', borderWidth: 2 }] },
+          options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top', labels: { color: '#eee' } }, title: { display: true, text: 'Detection Distribution', color: '#eee' } } }
+      });
+      const barCtx = document.getElementById('diseaseBarChart').getContext('2d');
+      barChart = new Chart(barCtx, {
+          type: 'bar', data: { labels: [], datasets: [{ label: 'Detection Count', data: [], backgroundColor: commonPalette, borderWidth: 1 }] },
+          options: { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true, ticks: { color: '#eee' } }, x: { ticks: { color: '#eee' } } }, plugins: { legend: { display: false }, title: { display: true, text: 'Detection Counts', color: '#eee' } } }
+      });
+  }
+
+  function updateAnalyticsCharts() {
+      fetch('/detection_summary')
+          .then(res => res.json())
+          .then(summary => {
+              const labels = Object.keys(summary);
+              const data = Object.values(summary);
+              if (labels.length === 0) {
+                  const msg = ['No detections yet'];
+                  pieChart.data.labels = msg; pieChart.data.datasets[0].data = [1];
+                  barChart.data.labels = msg; barChart.data.datasets[0].data = [0];
+              } else {
+                  pieChart.data.labels = labels; pieChart.data.datasets[0].data = data;
+                  barChart.data.labels = labels; barChart.data.datasets[0].data = data;
+              }
+              pieChart.update();
+              barChart.update();
+          })
+          .catch(error => console.error('Failed to update charts:', error));
+  }
+
+  setInterval(() => {
+    fetch('/tree_count')
+      .then(res => res.text())
+      .then(data => {
+        document.getElementById('tree-count').innerText = `Live Plant Count: ${data}`;
+      });
+  }, 2000);
+
+  window.addEventListener("load", () => {
+    setTimeout(() => {
+      document.getElementById("loader").style.display = "none";
+      document.getElementById("main-content").style.display = "block";
+      initializeCharts();
+      showSection('dashboard');
+      initMap();
+      updateClock();
+    }, 1500);
+  });
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_Maps_API_KEY&callback=initMap" async defer></script>
+</body>
+</html>
